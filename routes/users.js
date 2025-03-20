@@ -1,3 +1,4 @@
+const express = require("express");
 const usersController = require("../controllers/users.controller"); // Correct path
 const router = express.Router();
 const { body } = require("express-validator");
