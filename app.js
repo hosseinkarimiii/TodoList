@@ -1,36 +1,55 @@
-// Import necessary modules
 const express = require("express");
-const mongoose = require("mongoose"); // Import the Mongoose ODM for MongoDB
-const dotenv = require("dotenv"); // Import module for loading environment variables
-const todoRoutes = require("./routes/todos"); // Import route definitions for the Todo API
-const userRoutes = require("./routes/users"); //import route definitions for User Authentication.
-const { expressjwt: jwt } = require("express-jwt"); // import JWT for identify personally user
-// Load environment variables from .env file
-dotenv.config();
+const { expressjwt: expressJwt } = require("express-jwt");
+
+const mongoose = require("mongoose");
+require("dotenv").config();
+const todoRoutes = require("./routes/todos");
+const userRoutes = require("./routes/users");
+const { handleJwtError } = require("./middleware/auth");
+const errorHandler = require("./middleware/error-handler");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Set the port number for the server
-const PORT = process.env.PORT || 3000; // Use the PORT environment variable if set, otherwise default to 3000
-
-// Connect to the MongoDB database
+// اتصال به دیتابیس
 mongoose
-  .connect(process.env.MONGODB_URI) // Use the MONGODB_URI environment variable for the connection string
-  .then(() => console.log("MongoDB Connected")) // Log a success message if the connection is successful
-  .catch((err) => console.error("MongoDB Connection Error:", err)); // Log an error message if the connection fails.
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.error("MongoDB Connection Error:", err));
 
-// Use the body-parser middleware to parse JSON request bodies
+// Middleware برای پردازش JSON
 app.use(express.json());
 
-// Mount the todoRoutes middleware at the '/todos' path
-app.use(
-  "/todos",
-  jwt({ secret: process.env.JWT_SECRET, algorithms: ["HS256"] }),
-  todoRoutes
-); // This means any requests to paths starting with '/todos' will be handled by todoRoutes
-app.use("/users", userRoutes);
+// Middleware برای احراز هویت
+const verifyToken = expressJwt({
+  secret: process.env.JWT,
+  algorithms: ["HS256"],
+  requestProperty: "auth", // Decoded token will be stored in req.auth
+}).unless({
+  path: ["/api/users/login", "/api/users/register"], // مسیرهای مستثنی
+});
+app.use(verifyToken); // اعمال احراز هویت
 
-// Start the server and listen for incoming requests
+// Middleware برای تبدیل req.auth به req.user
+app.use((req, res, next) => {
+  if (req.auth) {
+    req.user = { _id: req.auth._id }; // Transfer decoded ID to req.user
+    console.log("Decoded user info:", req.user);
+  }
+  next();
+});
+
+// مدیریت خطاهای مربوط به JWT
+app.use(handleJwtError);
+
+// مسیرهای مربوط به Todo و User
+app.use("/api/todos", todoRoutes);
+app.use("/api/users", userRoutes);
+
+// Middleware مدیریت خطا
+app.use(errorHandler);
+
+// راه‌اندازی سرور
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

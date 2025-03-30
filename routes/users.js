@@ -1,27 +1,38 @@
 const express = require("express");
-const usersController = require("../controllers/users.controller"); // Correct path
-const router = express.Router();
+const usersController = require("../controllers/users.controller");
 const { body } = require("express-validator");
+const router = express.Router();
 
-//sign up
+// اعتبارسنجی ورودی‌ها
+const userValidations = {
+  username: body("username")
+    .trim() // حذف فاصله‌های اضافی
+    .isAlphanumeric()
+    .withMessage("Username must be alphanumeric")
+    .notEmpty()
+    .withMessage("Username is required"),
+  password: body("password")
+    .trim() // حذف فاصله‌های اضافی
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters long")
+    .notEmpty()
+    .withMessage("Password is required"),
+};
+
+// مسیر ثبت‌نام
+// POST /api/users/register
 router.post(
   "/register",
-  [
-    body("username").notEmpty().withMessage(" Username is required"),
-    body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters long"),
-  ],
+  [userValidations.username, userValidations.password],
   usersController.registerUser
 );
 
-//sign in
+// مسیر ورود
+// POST /api/users/login
 router.post(
   "/login",
-  [
-    body("username").notEmpty().withMessage("username is required"),
-    body("password").notEmpty().withMessage("password is required"),
-  ],
+  [userValidations.username, userValidations.password],
   usersController.loginUser
 );
+
 module.exports = router;

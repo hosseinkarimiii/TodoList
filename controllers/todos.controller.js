@@ -1,45 +1,44 @@
 const { validationResult } = require("express-validator");
-const Todo = require("../models/todo"); // Import your Todo model
+const Todo = require("../models/todo");
 const mongoose = require("mongoose");
-const isValidObjectId = (id) => {
-  return mongoose.Types.ObjectId.isValid(id);
-};
 
-// Get all Todos
-exports.getAlltodos = async (req, res) => {
+exports.getAlltodos = async (req, res, next) => {
   try {
     const todos = await Todo.find();
     res.json(todos);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-// Create a Todo
-exports.CreateTodo = async (req, res) => {
-  console.log(req.headers.authorization);
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ error: errors.array() });
-  }
-  console.log(req.user); // req.user should now be populated by the middleware
-  const userId = req.user._id; // Access the _id from the decoded token
-
-  const todo = new Todo({
-    text: req.body.text,
-    userId: userId, // Save the userId along with the todo
-  });
-
+exports.CreateTodo = async (req, res, next) => {
   try {
-    const newTodo = await todo.save();
-    res.status(201).json(newTodo);
+    if (!req.body.text) {
+      return res.status(400).json({ message: "Text field is required." });
+    }
+
+    if (!req.user || !req.user._id) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized: User information is missing." });
+    }
+
+    const newTodo = new Todo({
+      text: req.body.text,
+      completed: req.body.completed || false,
+      userId: req.user._id,
+    });
+
+    const savedTodo = await newTodo.save();
+    res.status(201).json(savedTodo);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Error in CreateTodo:", err.message);
+    next(err);
   }
 };
 
-exports.UpdatedTodos = async (req, res) => {
-  if (!isValidObjectId(req.params.id)) {
+exports.UpdatedTodos = async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return res.status(400).json({ message: "Invalid ID format" });
   }
   const errors = validationResult(req);
@@ -48,33 +47,37 @@ exports.UpdatedTodos = async (req, res) => {
   }
   try {
     const todo = await Todo.findById(req.params.id);
-    if (todo == null) {
-      return res.status(404).json({ message: "Cannot find todo" });
+    if (!todo || todo.userId.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized or Todo not found" });
     }
-    if (req.body.text != null) {
-      todo.text = req.body.text;
-    }
-    if (req.body.completed != null) {
-      todo.completed = req.body.completed;
-    }
-    const updatedTodo = await todo.save();
+
+    const updatedTodo = await Todo.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
     res.json(updatedTodo);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.DeleteTodos = async (req, res) => {
-  if (!isValidObjectId(req.params.id)) {
+exports.DeleteTodos = async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return res.status(400).json({ message: "Invalid ID format" });
   }
   try {
-    const todo = await Todo.findByIdAndDelete(req.params.id);
-    if (todo == null) {
-      return res.status(404).json({ message: "Cannot find todo" });
+    const todo = await Todo.findById(req.params.id);
+    if (!todo || todo.userId.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized or Todo not found" });
     }
-    res.json({ message: "Deleted Todo" });
+
+    await Todo.findByIdAndDelete(req.params.id);
+    res.json({ message: "Todo deleted successfully" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
